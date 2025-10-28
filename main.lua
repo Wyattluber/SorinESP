@@ -1,4 +1,4 @@
--- SorinESP v2 (Job Colors + Equipped Tool + Distance UI Control)
+-- SorinESP v2.2 (TeamColor ESP + Minimal Display + Watermark)
 -- Author: SorinSoftware Services | scripts.sorinservice.online/sorin/ESP.lua
 
 if getgenv().SorinESP_Active then
@@ -18,37 +18,53 @@ local LocalPlayer = Players.LocalPlayer
 local ESP_ENABLED = true
 local SHOW_DISTANCE = true
 local SHOW_TOOL = true
-local JOB_COLORS = true
 
--- Base colors
-local COLOR_DEFAULT = Color3.fromRGB(150, 120, 255)
-local COLOR_OUTLINE = Color3.fromRGB(255, 255, 255)
+local OUTLINE_COLOR = Color3.fromRGB(255, 255, 255)
+local FILL_TRANSPARENCY = 0.75
+local OUTLINE_TRANSPARENCY = 0.15
 
--- Job-based colors
-local JobColor = {
-    ["Police"] = Color3.fromRGB(70, 150, 255),
-    ["Polizei"] = Color3.fromRGB(70, 150, 255),
-    ["Firefighter"] = Color3.fromRGB(255, 100, 50),
-    ["Feuerwehr"] = Color3.fromRGB(255, 100, 50),
-    ["Medic"] = Color3.fromRGB(100, 255, 120),
-    ["Rettungsdienst"] = Color3.fromRGB(100, 255, 120),
-    ["Civilian"] = Color3.fromRGB(220, 220, 220),
-}
+--// Watermark
+local function createWatermark()
+    local text = "SorinESP — scripts.sorinservice.online/sorin/ESP.lua"
+    local wmTop = Drawing.new("Text")
+    wmTop.Text = text
+    wmTop.Size = 17
+    wmTop.Color = Color3.fromRGB(200, 180, 255)
+    wmTop.Outline = true
+    wmTop.OutlineColor = Color3.new(0, 0, 0)
+    wmTop.Center = true
+    wmTop.Visible = true
+
+    local wmBottom = Drawing.new("Text")
+    wmBottom.Text = text
+    wmBottom.Size = 17
+    wmBottom.Color = wmTop.Color
+    wmBottom.Outline = true
+    wmBottom.OutlineColor = wmTop.OutlineColor
+    wmBottom.Center = true
+    wmBottom.Visible = true
+
+    RunService.RenderStepped:Connect(function()
+        local size = Camera.ViewportSize
+        wmTop.Position = Vector2.new(size.X / 2, 8)
+        wmBottom.Position = Vector2.new(size.X / 2, size.Y - 28)
+    end)
+end
+createWatermark()
 
 --// ESP pool
 local ESP_POOL = {}
 
---// Create Highlight + Tag
 local function createESP(player)
     if not player.Character then return end
     if ESP_POOL[player] then return end
 
     local highlight = Instance.new("Highlight")
-    highlight.FillTransparency = 0.75
-    highlight.OutlineTransparency = 0.15
+    highlight.FillTransparency = FILL_TRANSPARENCY
+    highlight.OutlineTransparency = OUTLINE_TRANSPARENCY
     highlight.Adornee = player.Character
-    highlight.FillColor = COLOR_DEFAULT
-    highlight.OutlineColor = COLOR_OUTLINE
+    highlight.FillColor = Color3.fromRGB(160, 120, 255)
+    highlight.OutlineColor = OUTLINE_COLOR
     highlight.Parent = player.Character
 
     local tag = Drawing.new("Text")
@@ -83,31 +99,6 @@ for _, p in ipairs(Players:GetPlayers()) do
     end
 end
 
---// Get Job Color
-local function getJobColor(player)
-    if not JOB_COLORS then
-        return COLOR_DEFAULT
-    end
-    local jobName = "Civilian"
-    if player.Team and player.Team.Name then
-        jobName = player.Team.Name
-    elseif player:GetAttribute("Job") then
-        jobName = player:GetAttribute("Job")
-    end
-    return JobColor[jobName] or COLOR_DEFAULT
-end
-
---// Get Equipped Tool
-local function getEquippedTool(player)
-    local char = player.Character
-    if not char then return "" end
-    local tool = char:FindFirstChildOfClass("Tool")
-    if tool then
-        return tool.Name
-    end
-    return ""
-end
-
 --// Distance
 local function getDistance(player)
     local char = player.Character
@@ -120,7 +111,15 @@ local function getDistance(player)
     return (pos - myPos).Magnitude
 end
 
---// ESP Render Loop
+--// Get equipped tool
+local function getEquippedTool(player)
+    local char = player.Character
+    if not char then return "" end
+    local tool = char:FindFirstChildOfClass("Tool")
+    return tool and tool.Name or ""
+end
+
+--// Render loop
 RunService.RenderStepped:Connect(function()
     if not ESP_ENABLED then
         for _, v in pairs(ESP_POOL) do
@@ -134,6 +133,7 @@ RunService.RenderStepped:Connect(function()
         if player == LocalPlayer then continue end
         local entry = ESP_POOL[player]
         if not entry or not player.Character then continue end
+
         local head = player.Character:FindFirstChild("Head")
         local hum = player.Character:FindFirstChildOfClass("Humanoid")
         if not (head and hum and hum.Health > 0) then
@@ -142,28 +142,34 @@ RunService.RenderStepped:Connect(function()
             continue
         end
 
-        -- Color per job
-        entry.Highlight.FillColor = getJobColor(player)
+        -- Team color highlight
+        local teamColor = (player.Team and player.Team.TeamColor and player.Team.TeamColor.Color)
+            or Color3.fromRGB(160, 120, 255)
+        entry.Highlight.FillColor = teamColor
         entry.Highlight.Adornee = player.Character
         entry.Highlight.Enabled = true
 
-        -- Draw text
         local pos, onScreen = Camera:WorldToViewportPoint(head.Position + Vector3.new(0, 2.5, 0))
         if onScreen then
-            local textLines = {}
-            table.insert(textLines, string.format("%s\n@%s", player.DisplayName, player.Name))
+            local textLines = {
+                string.format("%s", player.DisplayName),
+                string.format("@%s", player.Name)
+            }
+
             if SHOW_TOOL then
                 local tool = getEquippedTool(player)
                 if tool ~= "" then
-                    table.insert(textLines, "🧰 " .. tool)
+                    table.insert(textLines, tool)
                 end
             end
+
             if SHOW_DISTANCE then
                 local dist = getDistance(player)
-                table.insert(textLines, string.format("📏 %.0fm", dist))
+                table.insert(textLines, string.format("%.0fm", dist))
             end
+
             entry.Tag.Text = table.concat(textLines, "\n")
-            entry.Tag.Color = getJobColor(player)
+            entry.Tag.Color = teamColor
             entry.Tag.Position = Vector2.new(pos.X, pos.Y)
             entry.Tag.Visible = true
         else
@@ -172,7 +178,7 @@ RunService.RenderStepped:Connect(function()
     end
 end)
 
---// Control UI (simple Drawing toggles)
+--// UI Control (toggle options)
 local Panel = {}
 local function createControlPanel()
     local baseY = 100
@@ -181,7 +187,6 @@ local function createControlPanel()
         { "ESP Enabled", function() ESP_ENABLED = not ESP_ENABLED end, function() return ESP_ENABLED end },
         { "Show Distance", function() SHOW_DISTANCE = not SHOW_DISTANCE end, function() return SHOW_DISTANCE end },
         { "Show Tool", function() SHOW_TOOL = not SHOW_TOOL end, function() return SHOW_TOOL end },
-        { "Job Colors", function() JOB_COLORS = not JOB_COLORS end, function() return JOB_COLORS end },
     }
 
     for i, opt in ipairs(options) do
@@ -204,15 +209,15 @@ local function createControlPanel()
         end
     end)
 
-    -- Click support (optional)
+    -- Click toggle
     UserInputService.InputBegan:Connect(function(input, gpe)
         if gpe then return end
         if input.UserInputType == Enum.UserInputType.MouseButton1 then
             local mouse = UserInputService:GetMouseLocation()
             for _, entry in pairs(Panel) do
                 local obj = entry.Obj
-                local boundsY = obj.Position.Y
-                if mouse.Y >= boundsY - 5 and mouse.Y <= boundsY + 10 then
+                local y = obj.Position.Y
+                if mouse.Y >= y - 5 and mouse.Y <= y + 10 then
                     entry.Action()
                 end
             end
@@ -221,7 +226,7 @@ local function createControlPanel()
 end
 createControlPanel()
 
---// Global toggle
+--// F4 Toggle
 UserInputService.InputBegan:Connect(function(input, gpe)
     if gpe then return end
     if input.KeyCode == Enum.KeyCode.F4 then
@@ -230,4 +235,6 @@ UserInputService.InputBegan:Connect(function(input, gpe)
     end
 end)
 
-print("SorinESP loaded successfully.\nView source code: scripts.sorinservice.online/sorin/ESP.lua\nToggle ESP with 'F4'.")
+print ("SorinESP loaded successfully")
+print ("Toggle ESP with 'F4'")
+print ("View source code: scripts.sorinservice.online/sorin/ESP.lua")
